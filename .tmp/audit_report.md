@@ -3,10 +3,10 @@
 ## Project
 
 - Repository: `Anju-Medical-Appointment-System`
-- Review date: `2026-03-25`
+- Review date: `2026-04-21`
 - Model used for the evaluation: `GPT-5.3-Codex`
 - GitHub repository link: `https://github.com/Eyob-smax/Anju-Medical-Appointment-System`
-- Overall conclusion: `Pass`
+- Overall conclusion: `Partial Pass`
 
 ## Checklist Progress (Executed In Order)
 
@@ -23,6 +23,7 @@
 
 - Docker startup and Docker test commands were not executed in this audit generation step.
 - Runtime confirmation boundary in this report is static evidence from code, docs, and test artifacts currently present in the repository.
+- Some runtime readiness behavior (Nacos + MySQL + backend startup timing) may vary across environments and may require tuning.
 
 ## Prioritized Issues
 
@@ -49,19 +50,23 @@
 
 ### 1.1 Can the deliverable actually run and be verified?
 
-- Conclusion: `Pass`
-- Reason: startup/test instructions are explicit and include stable readiness checks plus a one-command test runner path.
+- Conclusion: `Partial Pass`
+- Reason: startup/test instructions exist and are mostly reproducible, but runtime readiness depends on multi-service startup timing (MySQL + Nacos + backend) and may require additional environment tuning (Docker memory allocation, readiness delays).
 - Evidence: `README.md:13`, `README.md:28`, `docker-compose.yml:67`, `docker-compose.yml:100`, `run_tests.sh:13`.
 - Reproducible verification method:
   - `docker compose up -d`
   - `curl -v http://localhost:8080/`
   - `sh run_tests.sh`
+- Risk note:
+  - On lower-resource machines, containers may exit due to memory pressure, causing test-runner readiness probe failures.
 
 ### 1.2 Prompt-theme alignment (no severe deviation)
 
 - Conclusion: `Pass`
 - Reason: implementation stays aligned with appointment/property/finance/file/auth/audit domains required by prompt.
 - Evidence: `api/src/main/java/com/anju/domain/appointment/AppointmentController.java:22`, `api/src/main/java/com/anju/domain/property/PropertyController.java:34`, `api/src/main/java/com/anju/domain/finance/TransactionController.java:30`, `api/src/main/java/com/anju/domain/file/FileController.java:13`, `api/src/main/java/com/anju/aspect/AuditLogAspect.java:27`, `prompt.md:5`, `prompt.md:7`, `prompt.md:9`, `prompt.md:11`.
+
+---
 
 ## 2. Delivery Completeness
 
@@ -83,6 +88,8 @@
 - Reason: complete backend project with docs/tests/sql/docker.
 - Evidence: `README.md:1`, `docker-compose.yml:1`, `init.sql:1`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:1`, `unit_tests/src/test/java/com/anju/domain/finance/TransactionServiceTest.java:1`.
 
+---
+
 ## 3. Engineering & Architecture Quality
 
 ### 3.1 Structure and module division
@@ -96,6 +103,8 @@
 - Conclusion: `Pass`
 - Reason: configurable policies, service-level business rules, auditable operations, and doc-test alignment support maintainability.
 - Evidence: `api/src/main/resources/application.yml:52`, `api/src/main/java/com/anju/domain/file/FileService.java:36`, `api/src/main/java/com/anju/domain/finance/TransactionController.java:56`, `docs/api-spec.md:176`.
+
+---
 
 ## 4. Engineering Details & Professionalism
 
@@ -111,6 +120,8 @@
 - Reason: operational API shape with schema, authz, scheduling tasks, and both unit/API test suites.
 - Evidence: `init.sql:1`, `api/src/main/java/com/anju/domain/file/FileService.java:224`, `api/src/main/java/com/anju/domain/finance/TransactionController.java:47`, `run_tests.sh:13`.
 
+---
+
 ## 5. Requirement Understanding & Adaptation
 
 ### 5.1 Business goal and implicit constraints fitness
@@ -120,6 +131,8 @@
 - Evidence:
   - Constraints in code: `api/src/main/java/com/anju/domain/appointment/AppointmentService.java:92`, `api/src/main/java/com/anju/domain/appointment/AppointmentService.java:99`, `api/src/main/java/com/anju/domain/finance/TransactionService.java:47`, `api/src/main/java/com/anju/domain/finance/TransactionService.java:236`, `api/src/main/java/com/anju/domain/file/FileService.java:279`.
   - Constraints in API tests: `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:122`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:249`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:299`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:350`.
+
+---
 
 ## 6. Aesthetics (Full-stack/Frontend only)
 
@@ -167,7 +180,8 @@
 
 ### API functional tests
 
-- Conclusion: `Pass`
+- Conclusion: `Partial Pass`
+- Reason: API test coverage appears sufficient statically, but runtime execution depends on multi-service readiness and Docker stability; additional health endpoint checks or service_healthy gating would improve deterministic CI execution.
 - Evidence: `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:58`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:225`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:249`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:299`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:350`.
 
 ### Logging categorization and sensitive leakage risk
@@ -183,38 +197,16 @@
 ### Test Overview
 
 - Unit test suite: JUnit/Mockito in `unit_tests`.
-- API functional suite: RestAssured/JUnit in `API_tests` with coverage for 401/403/404/409/IDOR and secondary-password negative path.
+- API functional suite: RestAssured/JUnit in `API_tests`.
 - Project test execution entry: `run_tests.sh` and Docker `test-runner` profile.
 - Evidence: `run_tests.sh:13`, `docker-compose.yml:52`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:225`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:249`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:299`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:350`, `unit_tests/src/test/java/com/anju/domain/finance/TransactionServiceTest.java:132`.
 
-### Coverage Mapping Table
-
-| Requirement / Risk Point          | Corresponding Test Case                                                                                                                                                | Key Assertion / Fixture                           | Coverage Judgment | Gap                                         | Minimal Test Addition Suggestion             |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ----------------- | ------------------------------------------- | -------------------------------------------- |
-| Auth boundary 401                 | `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:58`                                                                                               | `statusCode(401)`                                 | Sufficient        | None critical                               | Add malformed credential variants optionally |
-| Role authorization 403 (finance)  | `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:96`                                                                                               | STAFF gets `403`                                  | Sufficient        | Limited role matrix depth                   | Add full role matrix optionally              |
-| Validation failure 400            | `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:81`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:418`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:430` | missing fields -> `400` (appointment, finance bookkeeping, property) | Sufficient | None critical | — |
-| Finance idempotency               | `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:122`                                                                                              | replay same key -> same `transactionNo`           | Sufficient        | None critical                               | Optional payload-mismatch idempotency check  |
-| Finance exception/export flow     | `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:165`                                                                                              | exception mark + statement + export header        | Sufficient        | None critical                               | Optional CSV content-depth checks            |
-| 404 API contracts                 | `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:225`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:237`                   | appointment/finance not found -> `404`            | Sufficient        | Could add file/property 404                 | Optional extension                           |
-| 409 API contracts                 | `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:249`                                                                                              | repeat exception mark -> `409`                    | Sufficient        | Could add more conflict types               | Optional extension                           |
-| Object-level authorization (IDOR) | `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:299`                                                                                              | foreign file access -> `403` + code `4034`        | Sufficient        | Could add appointment/finance IDOR variants | Optional extension                           |
-| Secondary password negative path  | `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:350`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:373`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:442` | invalid secondary password -> `403` + code `4033`; missing header -> `400` | Sufficient | None critical | — |
-| Finance import unit coverage      | `unit_tests/src/test/java/com/anju/domain/finance/TransactionServiceTest.java:132`, `unit_tests/src/test/java/com/anju/domain/finance/TransactionServiceTest.java:159`, `unit_tests/src/test/java/com/anju/domain/finance/TransactionServiceTest.java:178`, `unit_tests/src/test/java/com/anju/domain/finance/TransactionServiceTest.java:196` | mixed rows + ISO date + invalid `refundable` + invalid `payerId` format | Sufficient | None critical | — |
-
-### Security Coverage Audit
-
-- Authentication: `Sufficient`
-- Route authorization: `Sufficient`
-- Object-level authorization: `Sufficient`
-- Data isolation (role/user scoped): `Sufficient` for current architecture boundary
-
 ### Overall Test Sufficiency Judgment
 
-- Conclusion: `Pass`
+- Conclusion: `Partial Pass`
 - Judgment boundary:
-  - Covered: happy paths + key negative/security paths (401/403/404/409 + IDOR + idempotency + secondary-password invalid path + finance export/exception + finance import unit validations).
-  - Residual risk: additional depth scenarios can still be added, but current coverage is sufficient to catch major defects for this scope.
+  - Covered: happy paths + major negative/security paths (401/403/404/409 + IDOR + idempotency + secondary-password invalid path).
+  - Residual risk: runtime determinism is not fully guaranteed due to service startup timing and lack of a dedicated backend health endpoint used for orchestration.
 
 ---
 
@@ -228,10 +220,12 @@
   - `curl -v http://localhost:8080/`
   - `sh run_tests.sh`
 
+---
+
 ## Final Acceptance Judgment
 
-- Overall: `Pass`
+- Overall: `Partial Pass`
 - Basis:
-  - API documentation and implemented contracts are aligned.
-  - Test coverage includes major negative/security paths.
-  - Backend project includes run/test workflow and complete domain modules.
+  - Backend implementation is feature-complete and aligned with documented contracts.
+  - Security and core business constraints appear correct.
+  - Main remaining risk is runtime determinism in dockerized test execution (service readiness + environment resource constraints).
