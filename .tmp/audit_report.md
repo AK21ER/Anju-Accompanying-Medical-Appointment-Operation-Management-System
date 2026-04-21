@@ -5,7 +5,7 @@
 - Repository: `Anju-Medical-Appointment-System`
 - Review date: `2026-04-21`
 - Model used for the evaluation: `GPT-5.3-Codex`
-- GitHub repository link: `https://github.com/Eyob-smax/Anju-Medical-Appointment-System`
+- GitHub repository link: `https://github.com/AK21ER/Anju-Accompanying-Medical-Appointment-Operation-Management-System`
 - Overall conclusion: `Partial Pass`
 
 ## Checklist Progress (Executed In Order)
