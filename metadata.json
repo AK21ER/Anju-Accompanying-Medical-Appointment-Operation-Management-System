@@ -1,0 +1,24 @@
+{
+  "Project Name": "Anju Medical Appointment System",
+  "Project Type": "Pure backend",
+  "backend_language": "Java",
+  "runtime": "Java 17",
+  "backend_framework": "Spring Boot",
+  "database": "MySQL",
+  "config_registry": "Nacos",
+  "build_tool": "Maven",
+  "migration_tool": "Flyway",
+  "deployment_mode": "Offline Docker monolith",
+  "backend_root": "repo/backend",
+  "docs_root": "docs",
+  "test_roots": [
+    "repo/backend/unit_tests",
+    "repo/backend/api_tests"
+  ],
+  "services": [
+    "anju-backend",
+    "mysql",
+    "nacos"
+  ],
+  "prompt": "The **Anju Accompanying Medical Appointment Operation Management System** is designed to provide backend API capabilities for operation administrators, reviewers, scheduling dispatchers, financial personnel, and frontline service personnel, focusing on the offline operational closed-loop of \"property management + accompanying medical appointment service scheduling.\"\n\n**Property Domain** supports property creation, editing, listing/delisting, association of materials (images/videos), configuration of rent and deposit rules, management of available rental periods and vacancy periods, and provides compliance field validation and review workflows.\n\n**Appointment Domain** offers maintenance of available time slots, configuration of service types and standard durations (15/30/60/90 minutes), conflict detection (the same accompanying medical staff cannot accept overlapping appointments in the same time slot, and the same resource cannot be double-booked), rescheduling/cancellation rules (latest 24 hours in advance, maximum of 2 reschedules per order, cancellation penalty capped at 10% of the order amount or 50 RMB), and lifecycle management driven by a state machine. Appointments not confirmed within 15 minutes are automatically released.\n\n**Financial Domain** records multi-channel payment transactions (for bookkeeping only, no integration with external payment systems), refunds (original/non-original payment methods), and settlement details. Daily statements are generated with support for exception flagging, export, and tracking of invoice requests and issuance status.\n\n**File Domain** provides chunked upload, resumable upload, hash-based deduplication for instant uploads, concurrency and bandwidth throttling, preview capabilities for common documents/images/audio-video files, multi-version rollback, and a recycle bin policy (retained for 30 days).\n\nThe backend is implemented as a monolithic Java service (using Spring ecosystem components) running in a Docker offline environment, with configuration and registration managed solely by a locally deployed Nacos. Business data is stored in MySQL.\n\nAPI capabilities are organized by resource domains into interface families such as authentication and permissions, property management, appointment scheduling, financial reconciliation, file and version management, audit and export, etc. Each interface type supports semantics like create/query/update/submit for review/approve/invalidate, with role-based access control (minimum privileges, sensitive operations requiring secondary password verification).\n\nCore data models include: \n- Property master table (unique property code, status enumeration, rent/deposit Decimal, available rental start/end dates, compliance validation results). \n- Appointment table (unique appointment number, start/end times, status enumeration, penalty Decimal, reschedule count Int). \n- Transaction and settlement table (unique transaction number, channel enumeration, refundable flag). \n- File table (unique index on content hash, chunk information, version number, deletion flag, and expiration time). \n\nKey fields are indexed with composite indexes to support queries by status and time range. \n\n**Security and Compliance Requirements:** \n- Username and password are validated locally, with passwords stored using strong hashing (minimum 8 characters, including letters and numbers). \n- Sensitive fields (e.g., ID numbers, contact information) are encrypted in the database or output with masking. \n- Full-chain audit logs record the operator, timestamp, and summaries of key field changes. \n- Import/export functionality supports field mapping and type validation (required fields, length, enumeration, date format) and includes idempotency key rules to prevent duplicate bookkeeping and appointment creation.\n\nfinally I need two downloadable files"
+}

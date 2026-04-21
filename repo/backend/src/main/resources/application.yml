@@ -1,0 +1,61 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: anju-backend
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/anju_sys?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+    show-sql: false
+  cloud:
+    nacos:
+      config:
+        server-addr: ${SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR:${NACOS_SERVER_ADDR:localhost:8848}}
+        enabled: ${NACOS_CONFIG_ENABLED:false}
+      discovery:
+        server-addr: ${SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR:${NACOS_SERVER_ADDR:localhost:8848}}
+        enabled: ${NACOS_DISCOVERY_ENABLED:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+
+file:
+  upload:
+    max-concurrent-per-user: ${FILE_UPLOAD_MAX_CONCURRENT_PER_USER:3}
+    min-chunk-interval-ms: ${FILE_UPLOAD_MIN_CHUNK_INTERVAL_MS:150}
+  retention:
+    default-days: ${FILE_RETENTION_DEFAULT_DAYS:30}
+
+security:
+  jwt:
+    secret: ${SECURITY_JWT_SECRET}
+    expiration-seconds: ${SECURITY_JWT_EXPIRATION_SECONDS:86400}

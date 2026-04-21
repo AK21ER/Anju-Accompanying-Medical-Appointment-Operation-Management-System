@@ -1,0 +1,187 @@
+{
+  "info": {
+    "name": "Anju Medical Appointment System",
+    "description": "Starter collection with automatic Bearer Authorization for protected /api/* routes.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "b7a6f7bf-1f2b-42be-a2f2-f7f4f7e0af11"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const path = pm.request.url.getPath();",
+          "const requiresAuth = path.startsWith('/api/') || path.startsWith('/finance/') || path.startsWith('/appointment/') || path.startsWith('/file/') || path === '/auth/logout';",
+          "if (requiresAuth) {",
+          "  const authorization = pm.environment.get('authorization');",
+          "  if (authorization) {",
+          "    pm.request.headers.upsert({ key: 'Authorization', value: authorization });",
+          "  } else {",
+          "    const username = pm.environment.get('username');",
+          "    const password = pm.environment.get('password');",
+          "    if (!username || !password) {",
+          "      throw new Error('Run Auth -> Login first, or set username/password for Basic fallback.');",
+          "    }",
+          "    const authValue = 'Basic ' + btoa(username + ':' + password);",
+          "    pm.request.headers.upsert({ key: 'Authorization', value: authValue });",
+          "  }",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\",\n  \"displayName\": \"Postman User\",\n  \"role\": \"ADMIN\",\n  \"secondaryPassword\": \"{{secondaryPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login succeeds', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "let json;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (e) {",
+                  "  json = null;",
+                  "}",
+                  "if (json && json.data && json.data.token) {",
+                  "  pm.environment.set('authorization', 'Bearer ' + json.data.token);",
+                  "} else if (json && json.data && json.data.authorization) {",
+                  "  pm.environment.set('authorization', json.data.authorization);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "logout"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Finance",
+      "item": [
+        {
+          "name": "Daily Statement Export (JSON)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/finance/statements/daily/export?date={{statementDate}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["finance", "statements", "daily", "export"],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{statementDate}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Property",
+      "item": [
+        {
+          "name": "List Properties",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/properties",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "properties"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "username",
+      "value": "admin"
+    },
+    {
+      "key": "password",
+      "value": "Admin1234"
+    },
+    {
+      "key": "secondaryPassword",
+      "value": "Admin5678"
+    },
+    {
+      "key": "statementDate",
+      "value": "2026-03-25"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+# Ignore Maven local repository
+.m2/
+.env
+.env.*
+!.env.example
+node_modules/
+.venv/
+__pycache__/
+#unnecessary-thing/
+
+# Build artifacts
+target/
+**/target/
+*.class
+*.jar
+*.war
+
+# Test reports / compiler metadata
+surefire-reports/
+maven-status/
+uploads/*
+
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

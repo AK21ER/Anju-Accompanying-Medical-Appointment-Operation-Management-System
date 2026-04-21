@@ -1,0 +1,143 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: anju-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-anju_sys}"
+      MYSQL_USER: "${MYSQL_USER}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD}"
+      TZ: "${TZ:-UTC}"
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/database/migrations/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  nacos:
+    image: nacos/nacos-server:v2.3.2
+    container_name: anju-nacos
+    restart: unless-stopped
+    environment:
+      MODE: standalone
+      PREFER_HOST_MODE: hostname
+      NACOS_AUTH_ENABLE: "${NACOS_AUTH_ENABLE:-false}"
+      TZ: "${TZ:-UTC}"
+    ports:
+      - "8848:8848"
+
+  anju-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: anju-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      nacos:
+        condition: service_started
+    environment:
+      SPRING_PROFILES_ACTIVE: "${SPRING_PROFILES_ACTIVE:-docker}"
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-anju_sys}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+      SPRING_DATASOURCE_USERNAME: "${MYSQL_USER}"
+      SPRING_DATASOURCE_PASSWORD: "${MYSQL_PASSWORD}"
+      NACOS_SERVER_ADDR: "${NACOS_SERVER_ADDR:-nacos:8848}"
+      SPRING_CLOUD_NACOS_CONFIG_SERVER_ADDR: "${NACOS_SERVER_ADDR:-nacos:8848}"
+      SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: "${NACOS_SERVER_ADDR:-nacos:8848}"
+      NACOS_CONFIG_ENABLED: "${NACOS_CONFIG_ENABLED:-false}"
+      NACOS_DISCOVERY_ENABLED: "${NACOS_DISCOVERY_ENABLED:-false}"
+      ANJU_CRYPTO_KEY: "${ANJU_CRYPTO_KEY:-anju-local-docker-key}"
+      SECURITY_JWT_SECRET: "${SECURITY_JWT_SECRET}"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./uploads:/app/uploads
+
+  test-runner:
+    image: maven:3.9-eclipse-temurin-17
+    container_name: anju-test-runner
+    profiles: ["test"]
+    depends_on:
+      - anju-backend
+    environment:
+      API_BASE_URL: http://anju-backend
+      MAVEN_OPTS: "-Dmaven.wagon.http.retryHandler.count=5"
+    volumes:
+      - ./:/workspace
+      - maven_cache:/root/.m2
+    working_dir: /workspace
+    command:
+      - sh
+      - -lc
+      - |
+        set -e
+        URL=$${API_BASE_URL:-http://localhost}
+        BASE_ENDPOINT="$$URL:8080/"
+        echo "Waiting for API readiness at $$BASE_ENDPOINT (no health endpoint)..."
+
+        ATTEMPTS=0
+        MAX_ATTEMPTS=60
+        SLEEP_SECONDS=2
+        CONSECUTIVE_OK=0
+        REQUIRED_OK=3
+
+        while [ "$$ATTEMPTS" -lt "$$MAX_ATTEMPTS" ]; do
+          ATTEMPTS=$$((ATTEMPTS+1))
+          HTTP_CODE=$$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 3 "$$BASE_ENDPOINT" || true)
+
+          if [ "$$HTTP_CODE" -ge 200 ] && [ "$$HTTP_CODE" -lt 300 ]; then
+            CONSECUTIVE_OK=$$((CONSECUTIVE_OK+1))
+            echo "Readiness probe $$ATTEMPTS/$$MAX_ATTEMPTS: http_code=$$HTTP_CODE (ok streak $$CONSECUTIVE_OK/$$REQUIRED_OK)"
+            if [ "$$CONSECUTIVE_OK" -ge "$$REQUIRED_OK" ]; then
+              break
+            fi
+          else
+            CONSECUTIVE_OK=0
+            if [ "$$HTTP_CODE" = "000" ]; then
+              echo "Readiness probe $$ATTEMPTS/$$MAX_ATTEMPTS: connection not ready"
+            else
+              echo "Readiness probe $$ATTEMPTS/$$MAX_ATTEMPTS: http_code=$$HTTP_CODE (not ready)"
+            fi
+          fi
+
+          sleep "$$SLEEP_SECONDS"
+        done
+
+        if [ "$$CONSECUTIVE_OK" -lt "$$REQUIRED_OK" ]; then
+          echo "API did not become stably reachable in time."
+          exit 1
+        fi
+
+        echo "API is reachable. Starting tests..."
+
+        echo "API is up! Running Unit Tests..."
+        cd backend/unit_tests
+        mvn -B clean test
+        UNIT_TEST_STATUS=$$?
+        cd ../..
+
+        echo "Running API Functional Tests..."
+        cd backend/API_tests
+        mvn -B clean test
+        API_TEST_STATUS=$$?
+        cd ..
+
+        if [ "$$UNIT_TEST_STATUS" -eq 0 ] && [ "$$API_TEST_STATUS" -eq 0 ]; then
+          echo "Overall Status: SUCCESS"
+          exit 0
+        else
+          echo "Overall Status: FAILURE"
+          exit 1
+        fi
+
+volumes:
+  mysql_data:
+  maven_cache:
