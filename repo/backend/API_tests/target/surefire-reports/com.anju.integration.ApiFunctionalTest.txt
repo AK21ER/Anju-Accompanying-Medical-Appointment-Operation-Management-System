@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.anju.integration.ApiFunctionalTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 20.24 s -- in com.anju.integration.ApiFunctionalTest

@@ -10,7 +10,7 @@ services:
       MYSQL_PASSWORD: "${MYSQL_PASSWORD}"
       TZ: "${TZ:-UTC}"
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./backend/database/migrations/init.sql:/docker-entrypoint-initdb.d/init.sql:ro

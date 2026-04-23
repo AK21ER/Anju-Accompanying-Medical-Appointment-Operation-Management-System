@@ -37,19 +37,32 @@ public class TransactionController {
         this.authService = authService;
     }
 
+    @Auditable(module = "FINANCE", action = "Create bookkeeping transaction")
     @PostMapping("/bookkeeping")
     @PreAuthorize("hasAnyRole('ADMIN','FINANCE')")
     @Operation(summary = "Bookkeeping transaction")
     public Result<Transaction> record(
             @Valid @RequestBody TransactionRequest request,
-            @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey) {
+            @RequestHeader(value = "X-Secondary-Password", required = false) String secondaryPassword,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey,
+            Authentication authentication) {
+        if (secondaryPassword != null) {
+            authService.verifySecondaryPassword(authentication.getName(), secondaryPassword);
+        }
         return Result.success(transactionService.recordTransaction(request, idempotencyKey));
     }
 
+    @Auditable(module = "FINANCE", action = "Import bookkeeping transactions")
     @PostMapping("/import/bookkeeping")
     @PreAuthorize("hasAnyRole('ADMIN','FINANCE')")
     @Operation(summary = "Import bookkeeping rows", description = "Imports bookkeeping rows with field mapping, type validation, and idempotency-safe writes.")
-    public Result<BookkeepingImportResponse> importBookkeeping(@Valid @RequestBody BookkeepingImportRequest request) {
+    public Result<BookkeepingImportResponse> importBookkeeping(
+            @Valid @RequestBody BookkeepingImportRequest request,
+            @RequestHeader(value = "X-Secondary-Password", required = false) String secondaryPassword,
+            Authentication authentication) {
+        if (secondaryPassword != null) {
+            authService.verifySecondaryPassword(authentication.getName(), secondaryPassword);
+        }
         return Result.success(transactionService.importBookkeeping(request));
     }
     

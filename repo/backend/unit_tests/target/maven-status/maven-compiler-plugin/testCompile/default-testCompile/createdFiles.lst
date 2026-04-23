@@ -1,0 +1,3 @@
+com/anju/domain/auth/AuthServiceTest.class
+com/anju/domain/appointment/AppointmentServiceTest.class
+com/anju/domain/finance/TransactionServiceTest.class

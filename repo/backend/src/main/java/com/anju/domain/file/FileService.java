@@ -4,10 +4,13 @@ import com.anju.domain.file.dto.FileUploadRequest;
 import org.springframework.web.multipart.MultipartFile;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
 import com.anju.common.BusinessException;
 import com.anju.domain.auth.CurrentUserService;
@@ -32,6 +35,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class FileService {
 
     private static final Logger log = LoggerFactory.getLogger(FileService.class);
+    private static final String UPLOAD_ROOT_DIRECTORY = "uploads";
+    private static final String CHUNK_ROOT_DIRECTORY = "uploads/chunks";
     private final SysFileRepository sysFileRepository;
     private final CurrentUserService currentUserService;
     private final int maxConcurrentUploadsPerUser;
@@ -71,34 +76,27 @@ public class FileService {
             throw new BusinessException(400, "File is empty");
         }
 
-        String fileName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "uploaded_file.pdf";
-        String fileHash = request.getHash() != null ? request.getHash() : UUID.randomUUID().toString().replace("-", "");
-        
-        File uploadDir = new File("uploads");
-        if (!uploadDir.exists()) {
-            uploadDir.mkdirs();
-        }
-        
+        String fileName = sanitizeFileName(file.getOriginalFilename() != null ? file.getOriginalFilename() : "uploaded_file.pdf");
+        String contentType = file.getContentType() != null ? file.getContentType() : "application/pdf";
+        Path stagingFile = null;
+
         try {
-            Path targetPath = uploadDir.toPath().resolve(fileHash + "_" + fileName);
-            Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
-            
-            SysFile sysFile = new SysFile();
-            sysFile.setHash(fileHash);
-            sysFile.setChunks(1);
-            sysFile.setVersion(1);
-            sysFile.setFileName(fileName);
-            sysFile.setContentType(file.getContentType() != null ? file.getContentType() : "application/pdf");
-            sysFile.setSizeBytes(file.getSize());
-            sysFile.setUploadedBy(currentUser.getId());
-            sysFile.setStoragePath(targetPath.toAbsolutePath().toString());
-            sysFile.setExpiresAt(resolveExpiresAt(request.getExpiresAt()));
-            
-            return sysFileRepository.save(sysFile);
-            
+            Path stagingDirectory = Paths.get(UPLOAD_ROOT_DIRECTORY, ".staging", String.valueOf(currentUser.getId()));
+            Files.createDirectories(stagingDirectory);
+            stagingFile = Files.createTempFile(stagingDirectory, "upload-", ".tmp");
+            try (InputStream inputStream = file.getInputStream()) {
+                Files.copy(inputStream, stagingFile, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            String contentHash = sha256Hex(stagingFile);
+            validateProvidedHash(request.getHash(), contentHash);
+            return persistCompletedFile(currentUser, stagingFile, fileName, contentType, file.getSize(), contentHash, 1, request.getExpiresAt());
+
         } catch (IOException e) {
             log.error("Failed to store file: ", e);
             throw new BusinessException(500, "Failed to upload file");
+        } finally {
+            deleteQuietly(stagingFile);
         }
     }
 
@@ -107,39 +105,54 @@ public class FileService {
         validateChunkRequest(request);
         User currentUser = currentUserService.requireCurrentUser();
         acquireUploadPermit(currentUser.getId());
+        Path sessionDirectory = resolveChunkSessionDirectory(currentUser.getId(), request.getHash());
+        Path assembledFile = null;
 
         try {
-            Optional<SysFile> existing = sysFileRepository.findTopByHashAndIsDeletedFalseOrderByVersionDesc(request.getHash());
-            SysFile sysFile;
-            if (existing.isPresent()) {
-                sysFile = existing.get();
-                enforceFileAccess(sysFile, currentUser);
-                if (sysFile.getStoragePath() != null) {
-                    return sysFile;
-                }
-            } else {
-                sysFile = new SysFile();
-                sysFile.setHash(request.getHash());
-                sysFile.setChunks(request.getChunks());
-                sysFile.setVersion(1);
-                sysFile.setFileName(request.getFileName() == null ? "upload_" + System.currentTimeMillis() : request.getFileName().trim());
-                sysFile.setContentType(request.getContentType() == null ? "application/octet-stream" : request.getContentType().trim());
-                sysFile.setSizeBytes(request.getSizeBytes() == null ? 0L : request.getSizeBytes());
-                sysFile.setUploadedBy(currentUser.getId());
-                sysFile.setExpiresAt(resolveExpiresAt(request.getExpiresAt()));
-                sysFile = sysFileRepository.save(sysFile);
+            boolean hasChunkPayload = request.getChunkData() != null && request.getChunkData().length > 0;
+            if (!hasChunkPayload && request.getCurrentChunk().equals(request.getChunks())) {
+                return persistChunkMetadataOnly(currentUser, request);
             }
 
-            if (request.getCurrentChunk().equals(sysFile.getChunks())) {
-                sysFile.setStoragePath("/files/" + sysFile.getHash() + "/v" + sysFile.getVersion());
-                if (sysFile.getExpiresAt() == null) {
-                    sysFile.setExpiresAt(resolveExpiresAt(request.getExpiresAt()));
+            Files.createDirectories(sessionDirectory);
+            Path chunkPath = sessionDirectory.resolve(chunkFileName(request.getCurrentChunk()));
+            if (Files.notExists(chunkPath)) {
+                if (!hasChunkPayload) {
+                    throw new BusinessException(4004, "Chunk data is required for a missing chunk.");
                 }
-                sysFileRepository.save(sysFile);
+                Files.write(chunkPath, request.getChunkData());
+            } else if (hasChunkPayload) {
+                byte[] existingChunk = Files.readAllBytes(chunkPath);
+                if (!java.util.Arrays.equals(existingChunk, request.getChunkData())) {
+                    throw new BusinessException(4091, "Chunk already exists with different content.");
+                }
             }
 
-            return sysFile;
+            if (isChunkUploadComplete(sessionDirectory, request.getChunks())) {
+                assembledFile = assembleChunkedUpload(sessionDirectory, request, currentUser.getId());
+                String contentHash = sha256Hex(assembledFile);
+                validateProvidedHash(request.getHash(), contentHash);
+                long sizeBytes = request.getSizeBytes() != null ? request.getSizeBytes() : Files.size(assembledFile);
+                SysFile saved = persistCompletedFile(
+                        currentUser,
+                        assembledFile,
+                        request.getFileName(),
+                        request.getContentType(),
+                        sizeBytes,
+                        contentHash,
+                        request.getChunks(),
+                        request.getExpiresAt());
+                cleanupChunkSession(sessionDirectory);
+                assembledFile = null;
+                return saved;
+            }
+
+            return buildChunkUploadState(currentUser, request, sessionDirectory);
+        } catch (IOException e) {
+            log.error("Failed to process chunk upload: ", e);
+            throw new BusinessException(500, "Failed to upload file");
         } finally {
+            deleteQuietly(assembledFile);
             releaseUploadPermit(currentUser.getId());
         }
     }
@@ -277,6 +290,192 @@ public class FileService {
         int deletedCount = sysFileRepository.permanentlyDeleteOldFiles(threshold);
         int expiredCount = sysFileRepository.permanentlyDeleteExpiredFiles(LocalDateTime.now());
         log.info("Recycle bin task completed. Permanently deleted {} deleted files and {} expired files.", deletedCount, expiredCount);
+    }
+
+    private SysFile persistCompletedFile(User currentUser,
+                                         Path sourcePath,
+                                         String fileName,
+                                         String contentType,
+                                         long sizeBytes,
+                                         String contentHash,
+                                         int chunks,
+                                         LocalDateTime expiresAt) throws IOException {
+        Optional<SysFile> existing = sysFileRepository.findTopByHashAndIsDeletedFalseOrderByVersionDesc(contentHash);
+        String resolvedFileName = sanitizeFileName(fileName);
+        String resolvedContentType = contentType == null || contentType.isBlank() ? "application/octet-stream" : contentType.trim();
+        String storagePath;
+
+        if (existing.isPresent() && existing.get().getStoragePath() != null) {
+            storagePath = existing.get().getStoragePath();
+            deleteQuietly(sourcePath);
+        } else {
+            Path finalPath = resolveFinalStoragePath(contentHash, resolvedFileName);
+            Files.createDirectories(finalPath.getParent());
+            if (sourcePath != null) {
+                Files.move(sourcePath, finalPath, StandardCopyOption.REPLACE_EXISTING);
+            }
+            storagePath = finalPath.toAbsolutePath().toString();
+        }
+
+        SysFile sysFile = new SysFile();
+        sysFile.setHash(contentHash);
+        sysFile.setChunks(chunks);
+        sysFile.setVersion(existing.map(file -> file.getVersion() + 1).orElse(1));
+        sysFile.setFileName(resolvedFileName);
+        sysFile.setContentType(resolvedContentType);
+        sysFile.setSizeBytes(sizeBytes);
+        sysFile.setUploadedBy(currentUser.getId());
+        sysFile.setStoragePath(storagePath);
+        sysFile.setExpiresAt(resolveExpiresAt(expiresAt));
+        return sysFileRepository.save(sysFile);
+    }
+
+    private SysFile buildChunkUploadState(User currentUser, ChunkUploadRequest request, Path sessionDirectory) {
+        SysFile sysFile = new SysFile();
+        sysFile.setHash(request.getHash());
+        sysFile.setChunks(request.getChunks());
+        sysFile.setVersion(1);
+        sysFile.setFileName(sanitizeFileName(request.getFileName() == null ? "upload_" + System.currentTimeMillis() : request.getFileName().trim()));
+        sysFile.setContentType(request.getContentType() == null || request.getContentType().isBlank()
+                ? "application/octet-stream"
+                : request.getContentType().trim());
+        sysFile.setSizeBytes(request.getSizeBytes() == null ? 0L : request.getSizeBytes());
+        sysFile.setUploadedBy(currentUser.getId());
+        sysFile.setStoragePath(sessionDirectory.toAbsolutePath().toString());
+        sysFile.setExpiresAt(resolveExpiresAt(request.getExpiresAt()));
+        return sysFile;
+    }
+
+    private SysFile persistChunkMetadataOnly(User currentUser, ChunkUploadRequest request) {
+        Optional<SysFile> existing = sysFileRepository.findTopByHashAndIsDeletedFalseOrderByVersionDesc(request.getHash());
+        if (existing.isPresent() && existing.get().getStoragePath() != null) {
+            SysFile file = existing.get();
+            enforceFileAccess(file, currentUser);
+            return file;
+        }
+
+        String fileName = sanitizeFileName(request.getFileName() == null ? "upload_" + System.currentTimeMillis() : request.getFileName().trim());
+        String storagePath = "files/" + request.getHash() + "/v1";
+        SysFile sysFile = new SysFile();
+        sysFile.setHash(request.getHash());
+        sysFile.setChunks(request.getChunks());
+        sysFile.setVersion(1);
+        sysFile.setFileName(fileName);
+        sysFile.setContentType(request.getContentType() == null || request.getContentType().isBlank()
+                ? "application/octet-stream"
+                : request.getContentType().trim());
+        sysFile.setSizeBytes(request.getSizeBytes() == null ? 0L : request.getSizeBytes());
+        sysFile.setUploadedBy(currentUser.getId());
+        sysFile.setStoragePath(storagePath);
+        sysFile.setExpiresAt(resolveExpiresAt(request.getExpiresAt()));
+        return sysFileRepository.save(sysFile);
+    }
+
+    private Path assembleChunkedUpload(Path sessionDirectory, ChunkUploadRequest request, Long userId) throws IOException {
+        Path assembledDirectory = Paths.get(UPLOAD_ROOT_DIRECTORY, ".assembled", String.valueOf(userId));
+        Files.createDirectories(assembledDirectory);
+        Path assembledFile = Files.createTempFile(assembledDirectory, "assembled-", ".tmp");
+
+        try {
+            Files.deleteIfExists(assembledFile);
+            Files.createFile(assembledFile);
+            for (int chunkIndex = 1; chunkIndex <= request.getChunks(); chunkIndex++) {
+                Path chunkPath = sessionDirectory.resolve(chunkFileName(chunkIndex));
+                if (Files.notExists(chunkPath)) {
+                    throw new BusinessException(4005, "Missing chunk " + chunkIndex + " for completed upload.");
+                }
+                Files.write(assembledFile, Files.readAllBytes(chunkPath), java.nio.file.StandardOpenOption.APPEND);
+            }
+            return assembledFile;
+        } catch (IOException | RuntimeException ex) {
+            deleteQuietly(assembledFile);
+            throw ex;
+        }
+    }
+
+    private boolean isChunkUploadComplete(Path sessionDirectory, int chunks) {
+        for (int chunkIndex = 1; chunkIndex <= chunks; chunkIndex++) {
+            if (Files.notExists(sessionDirectory.resolve(chunkFileName(chunkIndex)))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void validateProvidedHash(String providedHash, String computedHash) {
+        if (providedHash != null && !providedHash.isBlank() && !providedHash.trim().equalsIgnoreCase(computedHash)) {
+            throw new BusinessException(4006, "Provided hash does not match the uploaded content.");
+        }
+    }
+
+    private Path resolveChunkSessionDirectory(Long userId, String hash) {
+        return Paths.get(CHUNK_ROOT_DIRECTORY, String.valueOf(userId), hash);
+    }
+
+    private Path resolveFinalStoragePath(String hash, String fileName) {
+        return Paths.get(UPLOAD_ROOT_DIRECTORY, hash + "_" + sanitizeFileName(fileName));
+    }
+
+    private String chunkFileName(Integer chunkIndex) {
+        return String.format("chunk-%05d.part", chunkIndex);
+    }
+
+    private String sanitizeFileName(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return "uploaded_file.pdf";
+        }
+        return Paths.get(fileName).getFileName().toString();
+    }
+
+    private String sha256Hex(Path filePath) throws IOException {
+        MessageDigest digest = newDigest();
+        byte[] buffer = new byte[8192];
+        try (InputStream inputStream = Files.newInputStream(filePath)) {
+            int read;
+            while ((read = inputStream.read(buffer)) != -1) {
+                digest.update(buffer, 0, read);
+            }
+        }
+        return toHex(digest.digest());
+    }
+
+    private MessageDigest newDigest() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 digest is not available", ex);
+        }
+    }
+
+    private String toHex(byte[] bytes) {
+        StringBuilder builder = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            builder.append(String.format("%02x", b));
+        }
+        return builder.toString();
+    }
+
+    private void cleanupChunkSession(Path sessionDirectory) {
+        if (sessionDirectory == null || Files.notExists(sessionDirectory)) {
+            return;
+        }
+        try (java.util.stream.Stream<Path> paths = Files.list(sessionDirectory)) {
+            paths.forEach(this::deleteQuietly);
+        } catch (IOException ex) {
+            log.warn("Failed to clean chunk session directory {}", sessionDirectory, ex);
+        }
+        deleteQuietly(sessionDirectory);
+    }
+
+    private void deleteQuietly(Path path) {
+        if (path == null) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException ex) {
+            log.warn("Failed to delete temporary path {}", path, ex);
+        }
     }
 
     private void acquireUploadPermit(Long userId) {

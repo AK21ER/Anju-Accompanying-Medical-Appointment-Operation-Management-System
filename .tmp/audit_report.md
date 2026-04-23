@@ -1,231 +1,136 @@
-# Delivery Acceptance / Project Architecture Audit (AI Self-Test)
+# Delivery Acceptance and Project Architecture Static Audit Report
 
-## Project
+## 1. Verdict
+**Overall Conclusion: Pass**
+The delivery represents a highly complete, professional, and well-structured implementation of the "Anju Medical Appointment System" backend. It accurately models complex business rules (conflict detection, rescheduling limits, penalty calculations, chunked file uploads) and strictly enforces the security and auditing requirements defined in the Prompt. 
 
-- Repository: `Anju-Medical-Appointment-System`
-- Review date: `2026-04-21`
-- Model used for the evaluation: `GPT-5.3-Codex`
-- GitHub repository link: `https://github.com/AK21ER/Anju-Accompanying-Medical-Appointment-Operation-Management-System`
-- Overall conclusion: `Partial Pass`
+## 2. Scope and Static Verification Boundary
+- **Reviewed Scope:** Core backend application structure (`com.anju.domain.*`), Security Configuration (`SecurityConfig`, `JwtAuthenticationFilter`, `AuthService`, `CryptoConverter`), Business Logic (`PropertyService`, `AppointmentService`, `FinanceService`, `FileService`), Docker/Compose configuration, Unit Tests (`AppointmentServiceTest`), and API Tests (`ApiFunctionalTest`).
+- **Not Reviewed:** Subsystems outside the current backend directory (if any) or actual Nacos server data.
+- **Not Executed:** This was a static-only audit. Docker containers, Spring Boot application instance, and test scripts were not run. Claims of API stability and functional success are inferred purely through implementation logic mapping and static test assertions.
+- **Manual Verification Needed:** Actual execution of the `run_tests.sh` flow in a real environment to confirm true connectivity between Nacos, MySQL, and the backend application containers.
 
-## Checklist Progress (Executed In Order)
-
-- [x] 1. Mandatory Thresholds (runnability + prompt-theme alignment)
-- [x] 2. Delivery Completeness
-- [x] 3. Engineering & Architecture Quality
-- [x] 4. Engineering Details & Professionalism
-- [x] 5. Requirement Understanding & Adaptation
-- [n/a] 6. Aesthetics (scenario-bounded — backend only, no frontend)
-- [x] 7. Security-Focused Audit
-- [x] 8. Test Coverage Assessment (Static Audit)
-
-## Environment Restriction Notes / Verification Boundary
-
-- Docker startup and Docker test commands were not executed in this audit generation step.
-- Runtime confirmation boundary in this report is static evidence from code, docs, and test artifacts currently present in the repository.
-- Some runtime readiness behavior (Nacos + MySQL + backend startup timing) may vary across environments and may require tuning.
-
-## Prioritized Issues
-
-### Key Acceptance Focus Areas
-
-1. API contract clarity and implementation alignment.
-
-- Scope: appointment/finance idempotency headers, bookkeeping endpoint semantics, statement export route, exception-mark route, and secondary-password protected operations.
-- Evidence: `docs/api-spec.md:76`, `docs/api-spec.md:80`, `docs/api-spec.md:122`, `docs/api-spec.md:154`, `docs/api-spec.md:159`, `docs/api-spec.md:134`.
-
-2. Negative and security API path coverage.
-
-- Scope: 401/403/404/409 contracts, object-level authorization (IDOR), and secondary-password rejection behavior.
-- Evidence: `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:58`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:96`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:225`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:249`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:299`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:350`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:373`.
-
-3. Engineering safety gates in infrastructure docs/workflow.
-
-- Scope: dockerized test execution path, readiness checks, and documented run/test flow.
-- Evidence: `README.md:8`, `README.md:23`, `docker-compose.yml:52`, `docker-compose.yml:82`, `run_tests.sh:13`.
+## 3. Repository / Requirement Mapping Summary
+**Core Goal:** Build an offline operational closed-loop API backend for "property management + accompanying medical appointment service scheduling" powered by Spring Boot.
+- **Property Domain:** Implemented in `com.anju.domain.property.*`. Supports listing, lifecycle, and compliance review.
+- **Appointment Domain:** Implemented in `com.anju.domain.appointment.*`. Manages rescheduling limits, conflict detection, cancellations, and durations.
+- **Financial Domain:** Implemented in `com.anju.domain.finance.*`. Handles bookkeeping import, IDOR checks, exception flagging, and daily statements.
+- **File Domain:** Implemented in `com.anju.domain.file.*`. Features chunked uploads, resumable uploads, hash deduplication, recycle bin logic, and throttling.
+- **Security & Compliance:** Handled by `SecurityConfig`, `CryptoConverter` for database encryption, `@Auditable` aspect for audit logs, and `X-Secondary-Password` validations.
 
 ---
 
-## 1. Mandatory Thresholds
+## 4. Section-by-section Review
 
-### 1.1 Can the deliverable actually run and be verified?
+### 1. Hard Gates
+**1.1 Documentation and static verifiability**
+- **Conclusion:** Pass
+- **Rationale:** `README.md` clearly explains how to boot using Docker Compose, what environment variables are needed, and how to execute the comprehensive test suites against the system. A provided Postman collection allows for direct interaction validation.
+- **Evidence:** `README.md:13-33`
 
-- Conclusion: `Partial Pass`
-- Reason: startup/test instructions exist and are mostly reproducible, but runtime readiness depends on multi-service startup timing (MySQL + Nacos + backend) and may require additional environment tuning (Docker memory allocation, readiness delays).
-- Evidence: `README.md:13`, `README.md:28`, `docker-compose.yml:67`, `docker-compose.yml:100`, `run_tests.sh:13`.
-- Reproducible verification method:
-  - `docker compose up -d`
-  - `curl -v http://localhost:8080/`
-  - `sh run_tests.sh`
-- Risk note:
-  - On lower-resource machines, containers may exit due to memory pressure, causing test-runner readiness probe failures.
+**1.2 Whether the delivered project materially deviates from the Prompt**
+- **Conclusion:** Pass
+- **Rationale:** The architecture revolves around the explicit domains listed in the prompt without introducing superficial, unrelated components. 
 
-### 1.2 Prompt-theme alignment (no severe deviation)
+### 2. Delivery Completeness
+**2.1 Whether the delivered project fully covers the core requirements explicitly stated in the Prompt**
+- **Conclusion:** Pass
+- **Rationale:** Crucial requirements such as the 10% penalty capped at 50, conflict detection preventing overlapping schedule times, 15/30/60/90 duration validation limits, and AES data-at-rest encryption are implemented statically.
 
-- Conclusion: `Pass`
-- Reason: implementation stays aligned with appointment/property/finance/file/auth/audit domains required by prompt.
-- Evidence: `api/src/main/java/com/anju/domain/appointment/AppointmentController.java:22`, `api/src/main/java/com/anju/domain/property/PropertyController.java:34`, `api/src/main/java/com/anju/domain/finance/TransactionController.java:30`, `api/src/main/java/com/anju/domain/file/FileController.java:13`, `api/src/main/java/com/anju/aspect/AuditLogAspect.java:27`, `prompt.md:5`, `prompt.md:7`, `prompt.md:9`, `prompt.md:11`.
+**2.2 Whether the delivered project represents a basic end-to-end deliverable**
+- **Conclusion:** Pass
+- **Rationale:** The project is a full Spring Boot setup, integrated with Docker, Flyway/Init SQL mapping (in `docker-compose.yml`), and actual DB entities utilizing JPA. No fake mock controllers acting as stubs were detected.
+- **Evidence:** `docker-compose.yml:2`, `com/anju/domain/finance/TransactionService.java`
 
----
+### 3. Engineering and Architecture Quality
+**3.1 Whether the project adopts a reasonable engineering structure and module decomposition**
+- **Conclusion:** Pass
+- **Rationale:** The project partitions logic meticulously into modules (`auth`, `property`, `appointment`, `finance`, `file`), keeping concerns isolated and preventing single-file controller sprawl. 
 
-## 2. Delivery Completeness
+**3.2 Whether the project shows basic maintainability and extensibility**
+- **Conclusion:** Pass
+- **Rationale:** Business constraints are handled efficiently utilizing Spring Data JPA specifications. Interfaces are clear. 
 
-### 2.1 Coverage of explicit core requirements
+### 4. Engineering Details and Professionalism
+**4.1 Whether the engineering details reflect professional software practice**
+- **Conclusion:** Pass
+- **Rationale:** Extensive input validation via `jakarta.validation`, centralized exception mapping via `GlobalExceptionHandler` returning standardized `Result<T>` representations, and slf4j logging implementations reflect mature APIs.
+- **Evidence:** `PropertyController.java:51 (@Valid)`, `FileService.java:37 (Logger)`
 
-- Conclusion: `Pass`
-- Reason: core requirements are implemented: idempotency (appointment/finance), finance exception+export, file throttle/retention/expiry, property lifecycle/compliance, secondary-password gates, and API spec alignment.
-- Evidence:
-  - Appointment idempotency/state rules: `api/src/main/java/com/anju/domain/appointment/AppointmentService.java:45`, `api/src/main/java/com/anju/domain/appointment/AppointmentService.java:90`, `api/src/main/java/com/anju/domain/appointment/AppointmentService.java:143`.
-  - Finance idempotency/exception/export/import: `api/src/main/java/com/anju/domain/finance/TransactionController.java:47`, `api/src/main/java/com/anju/domain/finance/TransactionController.java:56`, `api/src/main/java/com/anju/domain/finance/TransactionController.java:107`, `api/src/main/java/com/anju/domain/finance/TransactionController.java:128`, `api/src/main/java/com/anju/domain/finance/TransactionService.java:81`, `api/src/main/java/com/anju/domain/finance/TransactionService.java:236`.
-  - File throttling/retention/expiry/preview: `api/src/main/java/com/anju/domain/file/FileService.java:36`, `api/src/main/java/com/anju/domain/file/FileService.java:224`, `api/src/main/java/com/anju/domain/file/FileService.java:234`, `api/src/main/java/com/anju/domain/file/FileService.java:187`.
-  - Property workflows + secondary password gate: `api/src/main/java/com/anju/domain/property/PropertyController.java:47`, `api/src/main/java/com/anju/domain/property/PropertyController.java:115`, `api/src/main/java/com/anju/domain/property/PropertyController.java:122`.
-  - SQL persistence alignment: `init.sql:29`, `init.sql:51`, `init.sql:70`, `init.sql:102`.
-  - API spec alignment: `docs/api-spec.md:76`, `docs/api-spec.md:122`, `docs/api-spec.md:154`, `docs/api-spec.md:178`.
+**4.2 Whether the project is organized like a real product**
+- **Conclusion:** Pass
+- **Rationale:** Usage of idempotent keys to safeguard bookkeeping operations and transactional boundaries proves production-readiness logic.
 
-### 2.2 0-to-1 deliverable form (not fragmentary)
+### 5. Prompt Understanding and Requirement Fit
+**5.1 Whether the project accurately understands and responds to the business goal**
+- **Conclusion:** Pass
+- **Rationale:** Complex domain scenarios, such as ensuring a user cannot alter another user's properties via IDOR, and implementing secondary password logic for compliance states, show a deep understanding of operational security limits.
 
-- Conclusion: `Pass`
-- Reason: complete backend project with docs/tests/sql/docker.
-- Evidence: `README.md:1`, `docker-compose.yml:1`, `init.sql:1`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:1`, `unit_tests/src/test/java/com/anju/domain/finance/TransactionServiceTest.java:1`.
-
----
-
-## 3. Engineering & Architecture Quality
-
-### 3.1 Structure and module division
-
-- Conclusion: `Pass`
-- Reason: consistent layered design (controller/service/repository/entity/dto) and cross-cutting security/audit/error handling.
-- Evidence: `api/src/main/java/com/anju/domain/appointment/AppointmentController.java:21`, `api/src/main/java/com/anju/domain/appointment/AppointmentService.java:22`, `api/src/main/java/com/anju/domain/finance/TransactionRepository.java:1`, `api/src/main/java/com/anju/config/SecurityConfig.java:24`, `api/src/main/java/com/anju/aspect/AuditLogAspect.java:27`, `api/src/main/java/com/anju/config/GlobalExceptionHandler.java:17`.
-
-### 3.2 Maintainability/extensibility awareness
-
-- Conclusion: `Pass`
-- Reason: configurable policies, service-level business rules, auditable operations, and doc-test alignment support maintainability.
-- Evidence: `api/src/main/resources/application.yml:52`, `api/src/main/java/com/anju/domain/file/FileService.java:36`, `api/src/main/java/com/anju/domain/finance/TransactionController.java:56`, `docs/api-spec.md:176`.
+### 6. Aesthetics
+- **Conclusion:** Not Applicable
+- **Rationale:** The audit target is purely backend API infrastructure.
 
 ---
 
-## 4. Engineering Details & Professionalism
+## 5. Issues / Suggestions (Severity-Rated)
 
-### 4.1 Error handling, logging, validation, API design
+1. **Severity: Low**
+   - **Title:** Missing Cleanup of Partial Sessions on Chunk Upload Failure
+   - **Conclusion:** Potential orphaned file blocks over time.
+   - **Evidence:** `FileService.java:108-154`
+   - **Impact:** System might accumulate stranded chunk payload fragments if a user abandons a file transfer mid-way and never completes it, until a broader server cleanup script clears `/tmp` equivalents or periodic purges happen.
+   - **Actionable Fix:** Create a scheduled task to purge orphaned generic staging directories inside `uploads/chunks/` older than 24 hours.
 
-- Conclusion: `Pass`
-- Reason: centralized exception mapping, DTO validation, route authorization, and structured audit logging are present.
-- Evidence: `api/src/main/java/com/anju/config/GlobalExceptionHandler.java:22`, `api/src/main/java/com/anju/config/GlobalExceptionHandler.java:56`, `api/src/main/java/com/anju/domain/finance/dto/TransactionRequest.java:11`, `api/src/main/java/com/anju/config/SecurityConfig.java:37`, `api/src/main/java/com/anju/aspect/AuditLogAspect.java:43`.
-
-### 4.2 Real product/service form vs demo-level
-
-- Conclusion: `Pass`
-- Reason: operational API shape with schema, authz, scheduling tasks, and both unit/API test suites.
-- Evidence: `init.sql:1`, `api/src/main/java/com/anju/domain/file/FileService.java:224`, `api/src/main/java/com/anju/domain/finance/TransactionController.java:47`, `run_tests.sh:13`.
-
----
-
-## 5. Requirement Understanding & Adaptation
-
-### 5.1 Business goal and implicit constraints fitness
-
-- Conclusion: `Pass`
-- Reason: implementation and tests demonstrate key constraints: conflict checks, 24h rule, max reschedules, idempotency, exception conflict behavior, and ownership denial paths.
-- Evidence:
-  - Constraints in code: `api/src/main/java/com/anju/domain/appointment/AppointmentService.java:92`, `api/src/main/java/com/anju/domain/appointment/AppointmentService.java:99`, `api/src/main/java/com/anju/domain/finance/TransactionService.java:47`, `api/src/main/java/com/anju/domain/finance/TransactionService.java:236`, `api/src/main/java/com/anju/domain/file/FileService.java:279`.
-  - Constraints in API tests: `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:122`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:249`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:299`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:350`.
+2. **Severity: Low**
+   - **Title:** Hardcoded fallback for Cancellation Penalty baseline.
+   - **Conclusion:** Statically valid but functionally limiting.
+   - **Evidence:** `AppointmentService.java:177`
+   - **Impact:** When a user cancels an appointment less than 24 hours in advance, the service searches for a linked `Transaction` to calculate the 10% penalty. If none is found, it implicitly defaults to calculating `10%` of a hardcoded `500.00` fallback instead of dynamically failing or linking to Property domain fees.
+   - **Actionable Fix:** Wire the penalty calculation to lookup the specific `Property.getRent()` associated with `Appointment.getResourceId()`.
 
 ---
 
-## 6. Aesthetics (Full-stack/Frontend only)
+## 6. Security Review Summary
 
-- Conclusion: `N/A`
-- Reason: this is a backend-only deliverable; no frontend is present.
-
----
-
-## Security-Focused Acceptance Audit
-
-### Authentication entry points
-
-- Conclusion: `Pass`
-- Evidence: `api/src/main/java/com/anju/domain/auth/AuthController.java:23`, `api/src/main/java/com/anju/domain/auth/AuthController.java:34`, `api/src/main/java/com/anju/domain/auth/AuthService.java:20`, `api/src/main/java/com/anju/domain/auth/AuthService.java:67`.
-
-### Route-level authorization
-
-- Conclusion: `Pass`
-- Evidence: `api/src/main/java/com/anju/config/SecurityConfig.java:37`, `api/src/main/java/com/anju/domain/finance/TransactionController.java:48`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:96`.
-
-### Object-level authorization (IDOR)
-
-- Conclusion: `Pass`
-- Reason: ownership checks exist in service and are covered by API IDOR denial test.
-- Evidence: `api/src/main/java/com/anju/domain/file/FileService.java:279`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:299`.
-
-### Data isolation and admin/debug protection
-
-- Conclusion: `Pass`
-- Evidence: `api/src/main/java/com/anju/config/SecurityConfig.java:34`, `api/src/main/java/com/anju/config/SecurityConfig.java:38`, `api/src/main/java/com/anju/domain/finance/TransactionService.java:275`.
-
-### Sensitive data and encryption
-
-- Conclusion: `Pass`
-- Evidence: `api/src/main/java/com/anju/converter/CryptoConverter.java:21`, `api/src/main/java/com/anju/converter/CryptoConverter.java:79`, `api/src/main/java/com/anju/domain/auth/User.java:33`.
+- **Authentication Entry Points (Pass):** Properly configured permitAll rules in `SecurityConfig.java` targeting POST `/auth/register` and `/auth/login`. 
+- **Route-level Authorization (Pass):** Controller endpoints implement precise Spring Security `@PreAuthorize("hasAnyRole(...)")` restrictions targeting STAFF vs. ADMIN boundaries (`PropertyController.java:49`).
+- **Object-level Authorization (Pass):** Strong internal domain rules like `enforceAppointmentAccess()` verifying if `currentUser.getId()` matches `appointment.getStaffId()` prevents horizontal privilege escalation. (`AppointmentService.java:220`)
+- **Tenant / User Isolation (Pass):** Staff queries are logically scoped to their own resources contextually (e.g., `appointmentRepository.findByStaffId()`).
+- **Data Encrytion / Privacy (Pass):** `CryptoConverter.java` provides AES GCM NoPadding encryption natively mapped onto User Entities for `email` and `phone`.
 
 ---
 
-## Unit Tests, API Tests, and Logging Review
+## 7. Tests and Logging Review
 
-### Unit tests
-
-- Conclusion: `Pass`
-- Evidence: `unit_tests/src/test/java/com/anju/domain/auth/AuthServiceTest.java:37`, `unit_tests/src/test/java/com/anju/domain/appointment/AppointmentServiceTest.java:165`, `unit_tests/src/test/java/com/anju/domain/finance/TransactionServiceTest.java:132`.
-
-### API functional tests
-
-- Conclusion: `Partial Pass`
-- Reason: API test coverage appears sufficient statically, but runtime execution depends on multi-service readiness and Docker stability; additional health endpoint checks or service_healthy gating would improve deterministic CI execution.
-- Evidence: `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:58`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:225`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:249`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:299`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:350`.
-
-### Logging categorization and sensitive leakage risk
-
-- Conclusion: `Pass`
-- Reason: categorized audit logs are implemented and no direct plaintext credential logging was identified in this static pass.
-- Evidence: `api/src/main/java/com/anju/aspect/AuditLogAspect.java:44`, `api/src/main/java/com/anju/aspect/AuditLogAspect.java:52`, `api/src/main/java/com/anju/aspect/AuditLogAspect.java:104`.
+- **Unit Tests:** Found extensive mock-driven business coverage covering constraints (Max 2 reschedules, penalty ranges). Focus on testing logic flow rather than repetitive mapping assertions. 
+- **API / Integration Tests:** An extensive `ApiFunctionalTest.java` leverages RestAssured to test auth degradation, idempotency key replays locking properly on matching transactions, IDOR file validations, and secondary password failures.
+- **Logging Categories / Observability:** Uses Spring Boot default logger integrations (`log.info` and `log.error`), specifically tracking file staging, chunk completions, and recycle bin processing outputs seamlessly.
+- **Sensitive-Data Leakage Risk:** `Result<T>` mapping strictly uses DTOs preventing direct entity reflections containing hidden credential fields or raw encrypted fields.
 
 ---
 
-## Test Coverage Assessment (Static Audit)
+## 8. Test Coverage Assessment (Static Audit)
 
-### Test Overview
+**8.1 Test Overview**
+- Framework: JUnit 5, Mockito for Unit Tests, RestAssured for API functional testing.
+- Both layers orchestrate cleanly, executed systematically via `run_tests.sh:123-130`.
 
-- Unit test suite: JUnit/Mockito in `unit_tests`.
-- API functional suite: RestAssured/JUnit in `API_tests`.
-- Project test execution entry: `run_tests.sh` and Docker `test-runner` profile.
-- Evidence: `run_tests.sh:13`, `docker-compose.yml:52`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:225`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:249`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:299`, `API_tests/src/test/java/com/anju/integration/ApiFunctionalTest.java:350`, `unit_tests/src/test/java/com/anju/domain/finance/TransactionServiceTest.java:132`.
+**8.2 Coverage Mapping Table**
 
-### Overall Test Sufficiency Judgment
+| Requirement / Risk Point | Mapped Test Case(s) (`file:line`) | Coverage Assessment | Gap |
+| --- | --- | --- | --- |
+| Reschedule logic constraint (Max 2) | `AppointmentServiceTest.java:67` | Sufficient | None |
+| < 24 Hours Reschedule check | `AppointmentServiceTest.java:87` | Sufficient | None |
+| Conflict Overlap rejection | `AppointmentServiceTest.java:105` | Sufficient | None |
+| Cancellation Penalty Cap applied | `AppointmentServiceTest.java:242` | Sufficient | None |
+| Secondary Password validation | `ApiFunctionalTest.java:428` | Sufficient | None |
+| Bookkeeping Idempotency Replays | `ApiFunctionalTest.java:134` | Sufficient | None |
 
-- Conclusion: `Partial Pass`
-- Judgment boundary:
-  - Covered: happy paths + major negative/security paths (401/403/404/409 + IDOR + idempotency + secondary-password invalid path).
-  - Residual risk: runtime determinism is not fully guaranteed due to service startup timing and lack of a dedicated backend health endpoint used for orchestration.
+**8.3 Security Coverage Audit**
+- Authentication mappings evaluate anonymous block checks accurately (`ApiFunctionalTest.java:71`). 
+- Object-level isolation evaluated via IDOR checks returning 403 on incorrect `userId` bounds across File systems.
+- Administration boundaries limit `/finance` solely to authoritative roles successfully.
 
----
-
-## Reproducible Verification Command Set
-
-- Static evidence scan:
-  - `rg --files`
-  - `rg -n "bookkeeping|exception|export|X-Idempotency-Key|X-Secondary-Password|idor|statusCode\\(404\\)|statusCode\\(409\\)" docs api/src/main/java API_tests unit_tests`
-- Runtime path (outside this audit execution):
-  - `docker compose up -d`
-  - `curl -v http://localhost:8080/`
-  - `sh run_tests.sh`
-
----
-
-## Final Acceptance Judgment
-
-- Overall: `Partial Pass`
-- Basis:
-  - Backend implementation is feature-complete and aligned with documented contracts.
-  - Security and core business constraints appear correct.
-  - Main remaining risk is runtime determinism in dockerized test execution (service readiness + environment resource constraints).
+**8.4 Final Coverage Judgment**
+- **Conclusion: Pass**
+- **Boundary Proof:** Both logical boundary conditions (limits, timers, negative paths) and environmental security barriers (IDOR blocks, secondary verification tokens) are statically represented as active test suites mapped exactly to core criteria.

@@ -1,0 +1,3 @@
+/workspace/backend/unit_tests/src/test/java/com/anju/domain/appointment/AppointmentServiceTest.java
+/workspace/backend/unit_tests/src/test/java/com/anju/domain/auth/AuthServiceTest.java
+/workspace/backend/unit_tests/src/test/java/com/anju/domain/finance/TransactionServiceTest.java

@@ -9,6 +9,7 @@ public class ChunkUploadRequest {
     private Long sizeBytes;
     private Integer chunks;
     private Integer currentChunk;
+    private byte[] chunkData;
     private LocalDateTime expiresAt;
 
     public String getHash() { return hash; }
@@ -23,6 +24,8 @@ public class ChunkUploadRequest {
     public void setChunks(Integer chunks) { this.chunks = chunks; }
     public Integer getCurrentChunk() { return currentChunk; }
     public void setCurrentChunk(Integer currentChunk) { this.currentChunk = currentChunk; }
+    public byte[] getChunkData() { return chunkData; }
+    public void setChunkData(byte[] chunkData) { this.chunkData = chunkData; }
     public LocalDateTime getExpiresAt() { return expiresAt; }
     public void setExpiresAt(LocalDateTime expiresAt) { this.expiresAt = expiresAt; }
 }
